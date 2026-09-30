@@ -1,0 +1,45 @@
+{
+    "name": "laraxgram/sentinel",
+    "description": "Watch over your LaraGram bot: updates, webhooks, Telegram API calls, exceptions and performance in one dashboard.",
+    "keywords": [
+        "laragram",
+        "sentinel"
+    ],
+    "homepage": "https://github.com/laraxgram/sentinel",
+    "license": "MIT",
+    "support": {
+        "issues": "https://github.com/laraxgram/sentinel/issues",
+        "source": "https://github.com/laraxgram/sentinel"
+    },
+    "authors": [
+        {
+            "name": "laraXgram",
+            "email": "laraxgram@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "ext-json": "*",
+        "laraxgram/core": "^4"
+    },
+    "autoload": {
+        "psr-4": {
+            "LaraGram\\Sentinel\\": "src/"
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.x-dev"
+        },
+        "laragram": {
+            "providers": [
+                "LaraGram\\Sentinel\\SentinelServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

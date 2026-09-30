@@ -1,0 +1,58 @@
+<?php
+
+namespace {{ namespace }}\Providers;
+
+use LaraGram\Sentinel\IncomingEntry;
+use LaraGram\Sentinel\Sentinel;
+use LaraGram\Sentinel\SentinelApplicationServiceProvider;
+use LaraGram\Support\Facades\Gate;
+
+class SentinelServiceProvider extends SentinelApplicationServiceProvider
+{
+    /**
+     * Register any application services.
+     */
+    public function register(): void
+    {
+        $this->hideSensitiveData();
+
+        Sentinel::filter(function (IncomingEntry $entry) {
+            if ($this->app->environment('local')) {
+                return true;
+            }
+
+            return $entry->isException() ||
+                   $entry->isFailedApiCall() ||
+                   $entry->isFailedJob() ||
+                   $entry->type === 'update' ||
+                   $entry->type === 'conversation' ||
+                   $entry->hasMonitoredTag();
+        });
+    }
+
+    /**
+     * Prevent sensitive values from being stored by Sentinel.
+     */
+    protected function hideSensitiveData(): void
+    {
+        if ($this->app->environment('local')) {
+            return;
+        }
+
+        Sentinel::hide('parameters', ['phone_number']);
+    }
+
+    /**
+     * Register the Sentinel gate.
+     *
+     * This gate determines who can access Sentinel in non-local environments.
+     */
+    protected function gate(): void
+    {
+        Gate::define('viewSentinel', function ($user = null) {
+            return in_array($user?->email, [
+                //
+            ]);
+        });
+    }
+}
