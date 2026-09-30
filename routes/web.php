@@ -3,12 +3,19 @@
 use LaraGram\Sentinel\Http\Controllers\BotsController;
 use LaraGram\Sentinel\Http\Controllers\DashboardController;
 use LaraGram\Sentinel\Http\Controllers\EntriesController;
+use LaraGram\Sentinel\Http\Controllers\LoginController;
 use LaraGram\Sentinel\Http\Controllers\MetricsController;
 use LaraGram\Sentinel\Http\Controllers\PlaygroundController;
 use LaraGram\Sentinel\Http\Controllers\SettingsController;
 use LaraGram\Support\Facades\Route;
 
 Route::get('assets/{path}', [DashboardController::class, 'asset'])->where('path', '.*')->name('asset');
+
+Route::get('login', [LoginController::class, 'show'])->name('login');
+Route::post('login/code', [LoginController::class, 'sendCode'])->name('login.code');
+Route::post('login/verify', [LoginController::class, 'verifyCode'])->name('login.verify');
+Route::post('login/password', [LoginController::class, 'password'])->name('login.password');
+Route::post('logout', [LoginController::class, 'logout'])->name('logout');
 
 Route::prefix('api')->name('api.')->group(function () {
     // Metrics...

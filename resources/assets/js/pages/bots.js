@@ -201,6 +201,7 @@ export class BotPage extends Page {
                             <button class="btn xs danger-outline" data-action="delete-webhook">${icon('x')} Delete</button>` : ''}` : html`<span class="badge">${icon('lock')} read only</span>`,
                         body: props([
                             ['URL', info.url ? html`<div class="url-box"><span>${info.url}</span><button class="btn xs ghost icon" data-action="copy" data-value="${info.url}" aria-label="Copy">${icon('copy')}</button></div>` : html`<span class="muted">Not set</span>`],
+                            ['Bot API server', data.api_server.local ? html`${badge('local', 'info')} <span class="mono small">${data.api_server.endpoint}</span>` : html`<span class="mono small">api.telegram.org</span>`],
                             ['In config', data.connection.url ? html`<span class="mono small">${data.connection.url}</span>` : html`<span class="muted">bot.connections.${this.params.connection}.url is empty</span>`],
                             ['Pending updates', html`<b>${fmt.number(info.pending_update_count ?? 0)}</b>`],
                             ['Max connections', info.max_connections],

@@ -107,7 +107,7 @@ class App {
                 <aside class="sidebar">
                     <a class="sidebar-brand" href="#/">
                         ${logo()}
-                        <span class="logo-text"><strong>Sentinel</strong><span>for LaraGram</span></span>
+                        <span class="logo-text"><strong>Sentinel</strong></span>
                     </a>
                     <nav class="sidebar-nav" id="sentinel-nav"></nav>
                     <div class="sidebar-footer" id="sentinel-footer"></div>
@@ -176,6 +176,23 @@ class App {
                     ${icon(live ? 'radio' : 'pause')}${live ? html`<span class="dot"></span>` : ''}
                 </button>
                 <button class="icon-button" data-action="toggle-theme" title="Toggle dark mode">${icon(dark ? 'sun' : 'moon')}</button>
+                ${config.user ? html`
+                    <div class="dropdown">
+                        <button class="user-button" data-action="toggle-user">
+                            ${avatar(config.user.name, config.user.id, 'sm')}
+                            <span class="hide-sm">${config.user.name}</span>
+                            ${icon('chevronDown')}
+                        </button>
+                        ${this.userOpen ? html`
+                            <div class="dropdown-menu">
+                                <div class="dropdown-head">
+                                    <div class="strong">${config.user.name}</div>
+                                    <div class="small muted">${config.user.via === 'telegram' ? `Telegram ${config.user.username ? `@${config.user.username}` : config.user.id}` : 'Password login'} · ${config.user.ip}</div>
+                                </div>
+                                <a class="dropdown-item" href="#/settings">${icon('settings')} Settings</a>
+                                <button class="dropdown-item" data-action="logout" style="color:var(--error-600)">${icon('door')} Log out</button>
+                            </div>` : ''}
+                    </div>` : ''}
             </div>`);
     }
 
@@ -221,8 +238,23 @@ class App {
                     break;
                 case 'toggle-connections':
                     this.menuOpen = !this.menuOpen;
+                    this.userOpen = false;
                     this.renderHeader();
                     break;
+                case 'toggle-user':
+                    this.userOpen = !this.userOpen;
+                    this.menuOpen = false;
+                    this.renderHeader();
+                    break;
+                case 'logout': {
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = `${config.path}/logout`;
+                    form.innerHTML = `<input type="hidden" name="_token" value="${document.querySelector('meta[name="csrf-token"]')?.content || ''}">`;
+                    document.body.appendChild(form);
+                    form.submit();
+                    break;
+                }
                 case 'connection':
                     this.menuOpen = false;
                     store.set({ connection: target.dataset.value });
@@ -242,8 +274,9 @@ class App {
         });
 
         document.addEventListener('click', (e) => {
-            if (this.menuOpen && !e.target.closest('.dropdown')) {
+            if ((this.menuOpen || this.userOpen) && !e.target.closest('.dropdown')) {
                 this.menuOpen = false;
+                this.userOpen = false;
                 this.renderHeader();
             }
         });

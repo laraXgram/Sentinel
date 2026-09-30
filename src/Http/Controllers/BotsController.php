@@ -85,6 +85,10 @@ class BotsController extends Controller
 
         return response()->json([
             'connection' => $this->bots->connections()[$connection],
+            'api_server' => [
+                'endpoint' => config('bot.api_server.endpoint'),
+                'local' => ! $this->bots->usesOfficialApiServer(),
+            ],
             'profile' => $profile,
             'webhook' => $webhook,
             'commands' => $listeners->compareCommands($profile['commands']),

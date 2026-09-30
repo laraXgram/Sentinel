@@ -52,6 +52,7 @@ class DashboardController extends Controller
                 'allow_live' => (bool) config('sentinel.playground.allow_live'),
                 'webhook_changes' => (bool) config('sentinel.webhook.allow_changes'),
                 'alerts' => (bool) config('sentinel.alerts.enabled'),
+                'user' => Sentinel::user(request()),
             ],
         ])->header('Cache-Control', 'no-store');
     }

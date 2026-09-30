@@ -20,6 +20,9 @@ class SentinelApplicationServiceProvider extends ServiceProvider
     /**
      * Configure the Sentinel authorization services.
      *
+     * Besides Sentinel's own login, users logged in to your application
+     * through the web guard may pass the "viewSentinel" gate.
+     *
      * @return void
      */
     protected function authorization()
@@ -27,8 +30,8 @@ class SentinelApplicationServiceProvider extends ServiceProvider
         $this->gate();
 
         Sentinel::auth(function ($request) {
-            return $this->app->environment('local') ||
-                   Gate::check('viewSentinel', [$request->user()]);
+            return $request->user() !== null
+                && Gate::check('viewSentinel', [$request->user()]);
         });
     }
 

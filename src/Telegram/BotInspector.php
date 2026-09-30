@@ -43,6 +43,24 @@ class BotInspector
     }
 
     /**
+     * Get the connection Sentinel sends its own messages with.
+     *
+     * @return string|null
+     */
+    public function defaultConnection(): ?string
+    {
+        $configured = array_keys(array_filter($this->connections(), fn ($connection) => $connection['configured']));
+
+        foreach ([config('sentinel.auth.connection'), config('sentinel.alerts.connection'), config('bot.default')] as $candidate) {
+            if (is_string($candidate) && in_array($candidate, $configured, true)) {
+                return $candidate;
+            }
+        }
+
+        return $configured[0] ?? null;
+    }
+
+    /**
      * Determine if a connection is configured.
      *
      * @param  string  $connection
@@ -161,8 +179,8 @@ class BotInspector
             ];
         }
 
-        if (! Str::startsWith($url, 'https://')) {
-            $issues[] = ['level' => 'error', 'title' => 'Webhook is not HTTPS', 'detail' => 'Telegram only delivers webhooks over HTTPS.'];
+        if (! Str::startsWith($url, 'https://') && $this->usesOfficialApiServer()) {
+            $issues[] = ['level' => 'error', 'title' => 'Webhook is not HTTPS', 'detail' => 'api.telegram.org only delivers webhooks over HTTPS. A local Bot API server may use plain HTTP.'];
         }
 
         if (! empty($config['url']) && rtrim($config['url'], '/') !== rtrim($url, '/')) {
@@ -305,6 +323,18 @@ class BotInspector
     public function deleteWebhook(string $connection, bool $dropPending = false): array
     {
         return $this->call($connection, 'deleteWebhook', $dropPending ? ['drop_pending_updates' => true] : []);
+    }
+
+    /**
+     * Determine if the bots talk to Telegram's own Bot API server, rather than a local one.
+     *
+     * @return bool
+     */
+    public function usesOfficialApiServer(): bool
+    {
+        $host = parse_url((string) config('bot.api_server.endpoint', 'https://api.telegram.org'), PHP_URL_HOST);
+
+        return $host === null || $host === false || strtolower($host) === 'api.telegram.org';
     }
 
     /**

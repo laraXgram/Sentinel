@@ -41,6 +41,10 @@ async function request(method, path, { query, body } = {}) {
         data = null;
     }
 
+    if (response.status === 401) {
+        window.location.href = `${config.path}/login`;
+    }
+
     if (!response.ok) {
         const message = data?.message || data?.description || `Request failed with status ${response.status}`;
 

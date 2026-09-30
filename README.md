@@ -46,7 +46,35 @@ php laragram migrate
 
 `sentinel:install` publishes `config/sentinel.php`, the migration and `App\Providers\SentinelServiceProvider`, and registers the provider.
 
-Open **`/sentinel`** in your browser. In the `local` environment everyone can see the dashboard; everywhere else access is decided by the `viewSentinel` gate in `App\Providers\SentinelServiceProvider`:
+Open **`/sentinel`** in your browser.
+
+## Logging in
+
+Sentinel has its own login, separate from your application's users. Enable one or both methods in `.env`:
+
+```dotenv
+# Telegram: these admins type their user ID (or @username) and the bot sends them a one-time code
+SENTINEL_ADMINS=123456789,987654321
+SENTINEL_AUTH_CONNECTION=bot          # the bot that sends the codes (defaults to bot.default)
+
+# Username and password (plain text, or a bcrypt/argon hash)
+SENTINEL_USERNAME=admin
+SENTINEL_PASSWORD=choose-a-long-password
+
+SENTINEL_SESSION_LIFETIME=720         # minutes
+SENTINEL_LOGIN_NOTIFY=true            # tell the admins on Telegram about every login
+```
+
+- As soon as one method is configured, **every** visit needs a login, locally too.
+- Codes expire after 5 minutes and die after 5 wrong tries.
+- Each IP is limited to 5 attempts per minute.
+- The login form answers the same way for unknown IDs, so it can't be used to find out who the admins are.
+- Every login is recorded under **Alerts**, and the admins get a Telegram message about it.
+- Log out from the user menu in the top-right corner.
+
+With no method configured, the dashboard stays open in the `local` environment only.
+
+Users of your own application can also be let in through the `viewSentinel` gate in `App\Providers\SentinelServiceProvider`, when they are logged in through the `web` guard:
 
 ```php
 protected function gate(): void
@@ -57,6 +85,12 @@ protected function gate(): void
         ]);
     });
 }
+```
+
+For a completely custom rule, register your own callback:
+
+```php
+Sentinel::auth(fn ($request) => in_array($request->ip(), ['203.0.113.7']));
 ```
 
 ## Keep it running

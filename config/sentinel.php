@@ -37,14 +37,47 @@ return [
     |--------------------------------------------------------------------------
     |
     | These middleware are assigned to every Sentinel dashboard route. The
-    | Authorize middleware checks the "viewSentinel" gate, which you may
-    | define in your application's SentinelServiceProvider.
+    | Authorize middleware sends visitors to the Sentinel login screen
+    | unless they are logged in (see "auth" below).
     |
     */
 
     'middleware' => [
         'web',
         \LaraGram\Sentinel\Http\Middleware\Authorize::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Dashboard Login
+    |--------------------------------------------------------------------------
+    |
+    | Sentinel has its own login, independent of your application's users.
+    |
+    | "telegram": the admins listed below type their Telegram user ID and
+    | the bot sends them a one-time code. "password": a single username and
+    | password from your .env file (plain text or a bcrypt/argon hash).
+    |
+    | Once any method is configured, the dashboard always asks to log in,
+    | even locally. With nothing configured it stays open in the "local"
+    | environment only, or follows the "viewSentinel" gate.
+    |
+    */
+
+    'auth' => [
+        'methods' => ['telegram', 'password'],
+
+        'admins' => array_values(array_filter(array_map('trim', explode(',', (string) env('SENTINEL_ADMINS', ''))))),
+
+        'connection' => env('SENTINEL_AUTH_CONNECTION'),
+
+        'username' => env('SENTINEL_USERNAME', 'admin'),
+        'password' => env('SENTINEL_PASSWORD'),
+
+        'code_ttl' => 300,
+        'max_attempts' => 5,
+        'lifetime' => env('SENTINEL_SESSION_LIFETIME', 720),
+        'notify' => env('SENTINEL_LOGIN_NOTIFY', true),
     ],
 
     /*
