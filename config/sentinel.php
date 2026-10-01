@@ -122,6 +122,10 @@ return [
     | Web requests to these paths and these console commands will not be
     | watched. The Sentinel dashboard itself is always ignored.
     |
+    | Queue workers and the scheduler are listed on purpose: they are not
+    | recorded as a whole (that would only collect their polling), but every
+    | job and scheduled task they run is still recorded as its own batch.
+    |
     */
 
     'ignore_paths' => [
@@ -282,7 +286,7 @@ return [
         Watchers\CacheWatcher::class => [
             'enabled' => env('SENTINEL_CACHE_WATCHER', true),
             'hidden' => [],
-            'ignore' => ['sentinel:*', 'antiflood:*', 'laragram:*', 'conversation:*'],
+            'ignore' => ['sentinel:*', 'antiflood:*', 'laragram:*', 'LaraGram:*', 'conversation:*'],
         ],
 
         Watchers\CommandWatcher::class => env('SENTINEL_COMMAND_WATCHER', true),

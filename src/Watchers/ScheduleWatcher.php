@@ -2,10 +2,13 @@
 
 namespace LaraGram\Sentinel\Watchers;
 
+use LaraGram\Console\Events\ScheduledBackgroundTaskFinished;
 use LaraGram\Console\Events\ScheduledTaskFailed;
 use LaraGram\Console\Events\ScheduledTaskFinished;
+use LaraGram\Console\Events\ScheduledTaskSkipped;
 use LaraGram\Sentinel\IncomingEntry;
 use LaraGram\Sentinel\Sentinel;
+use LaraGram\Sentinel\Support\Redactor;
 
 class ScheduleWatcher extends Watcher
 {
@@ -17,12 +20,14 @@ class ScheduleWatcher extends Watcher
      */
     public function register($app)
     {
-        $app['events']->listen(ScheduledTaskFinished::class, fn ($event) => $this->recordTask($event, 'finished'));
+        $app['events']->listen(ScheduledTaskFinished::class, fn ($event) => $this->recordTask($event, $event->task->runInBackground ? 'started' : 'finished'));
         $app['events']->listen(ScheduledTaskFailed::class, fn ($event) => $this->recordTask($event, 'failed'));
+        $app['events']->listen(ScheduledTaskSkipped::class, fn ($event) => $this->recordTask($event, 'skipped'));
+        $app['events']->listen(ScheduledBackgroundTaskFinished::class, fn ($event) => $this->recordTask($event, 'finished'));
     }
 
     /**
-     * Record a scheduled task that ran.
+     * Record a scheduled task.
      *
      * @param  object  $event
      * @param  string  $status
@@ -35,7 +40,7 @@ class ScheduleWatcher extends Watcher
         }
 
         $task = $event->task;
-        $command = $task->command ?: ($task->description ?? 'Closure');
+        $command = $this->command($task);
 
         Sentinel::recordScheduledTask(IncomingEntry::make(array_filter([
             'command' => $command,
@@ -43,10 +48,44 @@ class ScheduleWatcher extends Watcher
             'expression' => $task->expression ?? null,
             'timezone' => is_string($task->timezone ?? null) ? $task->timezone : null,
             'status' => $status,
+            'background' => ($task->runInBackground ?? false) ?: null,
+            'exit_code' => $task->exitCode ?? null,
             'runtime' => isset($event->runtime) ? round($event->runtime * 1000, 2) : null,
-            'exception' => isset($event->exception) ? get_class($event->exception).': '.$event->exception->getMessage() : null,
-        ], fn ($value) => $value !== null))->tags($status === 'failed' ? ['failed'] : []));
+            'exception' => isset($event->exception) ? get_class($event->exception).': '.Redactor::string($event->exception->getMessage()) : null,
+        ], fn ($value) => $value !== null))->tags(array_values(array_filter([
+            'task:'.$command,
+            $status === 'failed' ? 'failed' : null,
+            $status === 'skipped' ? 'skipped' : null,
+        ]))));
 
-        Sentinel::metric('scheduled_task', (string) $command, null, ['count'], '');
+        if ($status === 'skipped' || $status === 'started') {
+            return;
+        }
+
+        Sentinel::metric('scheduled_task', $command, isset($event->runtime) ? $event->runtime * 1000 : null, ['count', 'avg', 'max'], '');
+
+        if ($status === 'failed') {
+            Sentinel::metric('scheduled_task_failed', $command, null, ['count'], '');
+        }
+    }
+
+    /**
+     * Describe the command a task runs.
+     *
+     * @param  object  $task
+     * @return string
+     */
+    protected function command($task): string
+    {
+        if ($task->description ?? null) {
+            return $task->description;
+        }
+
+        if (! $task->command) {
+            return 'Closure';
+        }
+
+        // "'/usr/bin/php' 'laragram' inspire" reads better as "inspire".
+        return trim(preg_replace("/^'[^']*php[^']*'\s+'?laragram'?\s*/", '', $task->command)) ?: $task->command;
     }
 }

@@ -2,21 +2,24 @@
 
 namespace LaraGram\Sentinel;
 
-use LaraGram\Queue\Events\JobExceptionOccurred;
-use LaraGram\Queue\Events\JobFailed;
-use LaraGram\Queue\Events\JobProcessed;
+use LaraGram\Console\Events\ScheduledTaskStarting;
 use LaraGram\Queue\Events\JobProcessing;
+use LaraGram\Queue\Events\Looping;
+use LaraGram\Queue\Events\WorkerStopping;
 use LaraGram\Sentinel\Contracts\EntriesRepository;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
 
 trait ListensForStorageOpportunities
 {
     /**
-     * The queued jobs being processed right now.
+     * Indicates if a queued job or scheduled task is being recorded on its own.
      *
-     * @var array<int, bool>
+     * Queue workers and the scheduler run for a long time and mostly poll;
+     * only the jobs and tasks they run are recorded, each as its own batch.
+     *
+     * @var bool
      */
-    protected static $processingJobs = [];
+    protected static $unitOpen = false;
 
     /**
      * Register listeners that store the recorded entries.
@@ -28,7 +31,9 @@ trait ListensForStorageOpportunities
     {
         static::storeEntriesBeforeTermination($app);
 
-        static::storeEntriesAfterWorkerLoop($app);
+        static::storeEntriesAroundJobs($app);
+
+        static::storeEntriesAroundScheduledTasks($app);
 
         static::storeEntriesAfterSurgeOperations($app);
     }
@@ -43,33 +48,47 @@ trait ListensForStorageOpportunities
     {
         $app->terminating(function () use ($app) {
             static::storeRecordedEntries($app);
+
+            static::$unitOpen = false;
         });
     }
 
     /**
-     * Store the entries after each job a queue worker processes.
+     * Record each job a queue worker processes as its own batch.
+     *
+     * The batch is stored when the worker loops again or stops, rather than
+     * right when the job finishes, because the worker reports the exception
+     * of a failed job only after the failure events.
      *
      * @param  \LaraGram\Foundation\Application  $app
      * @return void
      */
-    protected static function storeEntriesAfterWorkerLoop($app)
+    protected static function storeEntriesAroundJobs($app)
     {
-        $app['events']->listen(JobProcessing::class, function ($event) {
+        $app['events']->listen(JobProcessing::class, function ($event) use ($app) {
             if ($event->connectionName !== 'sync') {
-                static::startRecording();
-
-                static::$processingJobs[] = true;
+                static::beginUnit($app);
             }
         });
 
-        $app['events']->listen([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class], function ($event) use ($app) {
-            if ($event->connectionName !== 'sync') {
-                array_pop(static::$processingJobs);
+        $app['events']->listen([Looping::class, WorkerStopping::class], function () use ($app) {
+            static::endUnit($app);
+        });
+    }
 
-                if (empty(static::$processingJobs)) {
-                    static::storeRecordedEntries($app);
-                }
-            }
+    /**
+     * Record each scheduled task as its own batch.
+     *
+     * A task's batch is stored when the next task starts or the scheduler
+     * exits, so the exception of a failed task is part of it.
+     *
+     * @param  \LaraGram\Foundation\Application  $app
+     * @return void
+     */
+    protected static function storeEntriesAroundScheduledTasks($app)
+    {
+        $app['events']->listen(ScheduledTaskStarting::class, function () use ($app) {
+            static::beginUnit($app);
         });
     }
 
@@ -88,6 +107,45 @@ trait ListensForStorageOpportunities
         ], function () use ($app) {
             static::storeRecordedEntries($app);
         });
+    }
+
+    /**
+     * Start recording a job or scheduled task on its own.
+     *
+     * @param  \LaraGram\Foundation\Application  $app
+     * @return void
+     */
+    protected static function beginUnit($app)
+    {
+        if (static::$unitOpen) {
+            static::endUnit($app);
+        } elseif (static::$shouldRecord) {
+            // The whole process is recorded already; its entries are stored on exit.
+            return;
+        }
+
+        static::startRecording();
+
+        static::$unitOpen = static::$shouldRecord;
+    }
+
+    /**
+     * Store the job or scheduled task being recorded and stop recording.
+     *
+     * @param  \LaraGram\Foundation\Application  $app
+     * @return void
+     */
+    protected static function endUnit($app)
+    {
+        if (! static::$unitOpen) {
+            return;
+        }
+
+        static::storeRecordedEntries($app);
+
+        static::$unitOpen = false;
+
+        static::stopRecording();
     }
 
     /**
