@@ -7,10 +7,12 @@ use LaraGram\Contracts\Debug\ExceptionHandler;
 use LaraGram\Request\Request as BotRequest;
 use LaraGram\Sentinel\Contracts\EntriesRepository;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
+use LaraGram\Sentinel\Storage\RedisBuffer;
 use LaraGram\Sentinel\Support\Redactor;
 use LaraGram\Sentinel\Support\UpdateParser;
 use LaraGram\Sentinel\Telegram\DryRunInterceptor;
 use LaraGram\Support\Facades\Auth;
+use LaraGram\Support\Collection;
 use LaraGram\Support\Str;
 use Throwable;
 
@@ -725,12 +727,8 @@ class Sentinel
             })->values();
 
             try {
-                if ($queue->isNotEmpty()) {
-                    $entries->store($queue);
-                }
-
-                if (! empty(static::$metricsQueue) || ! empty(static::$valuesQueue)) {
-                    $metrics->store(static::$metricsQueue, array_values(static::$valuesQueue));
+                if (! static::buffer($queue, static::$metricsQueue, array_values(static::$valuesQueue))) {
+                    static::write($entries, $metrics, $queue, static::$metricsQueue, array_values(static::$valuesQueue));
 
                     if (random_int(1, 500) === 1) {
                         $metrics->trim();
@@ -746,6 +744,56 @@ class Sentinel
         });
 
         static::flushEntries();
+    }
+
+    /**
+     * Write entries, metrics and values to the repositories.
+     *
+     * @param  \LaraGram\Sentinel\Contracts\EntriesRepository  $entries
+     * @param  \LaraGram\Sentinel\Contracts\MetricsRepository  $metrics
+     * @param  \LaraGram\Support\Collection<int, \LaraGram\Sentinel\IncomingEntry>  $queue
+     * @param  array  $metricRows
+     * @param  array  $values
+     * @return void
+     */
+    public static function write(EntriesRepository $entries, MetricsRepository $metrics, Collection $queue, array $metricRows, array $values): void
+    {
+        if ($queue->isNotEmpty()) {
+            $entries->store($queue);
+        }
+
+        if ($metricRows !== [] || $values !== []) {
+            $metrics->store($metricRows, $values);
+        }
+    }
+
+    /**
+     * Hand the batch to the Redis buffer when it is the storage driver.
+     *
+     * Playground simulations are written right away: the playground reads
+     * their batch back as soon as the process exits. When Redis cannot be
+     * reached the batch is written to the database instead of being lost.
+     *
+     * @param  \LaraGram\Support\Collection<int, \LaraGram\Sentinel\IncomingEntry>  $queue
+     * @param  array  $metricRows
+     * @param  array  $values
+     * @return bool  Whether the batch was buffered.
+     */
+    protected static function buffer(Collection $queue, array $metricRows, array $values): bool
+    {
+        if (config('sentinel.storage.driver', 'database') !== 'redis' || static::$simulation !== null) {
+            return false;
+        }
+
+        return rescue(function () use ($queue, $metricRows, $values) {
+            app(RedisBuffer::class)->push([
+                'entries' => $queue->map(fn (IncomingEntry $entry) => $entry->toBuffer())->all(),
+                'metrics' => $metricRows,
+                'values' => $values,
+            ]);
+
+            return true;
+        }, false, false);
     }
 
     /**

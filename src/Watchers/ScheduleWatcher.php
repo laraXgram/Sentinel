@@ -42,6 +42,11 @@ class ScheduleWatcher extends Watcher
         $task = $event->task;
         $command = $this->command($task);
 
+        // Sentinel's own buffer flush runs every minute and is not worth an entry.
+        if (str_starts_with($command, 'sentinel:flush')) {
+            return;
+        }
+
         Sentinel::recordScheduledTask(IncomingEntry::make(array_filter([
             'command' => $command,
             'description' => $task->description ?? null,

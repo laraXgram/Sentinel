@@ -2,6 +2,8 @@
 
 namespace LaraGram\Sentinel;
 
+use LaraGram\Console\Scheduling\Schedule;
+use LaraGram\Contracts\Redis\Factory as RedisFactory;
 use LaraGram\Database\ConnectionResolverInterface;
 use LaraGram\Sentinel\Alerts\Alerter;
 use LaraGram\Sentinel\Contracts\ClearableRepository;
@@ -10,6 +12,7 @@ use LaraGram\Sentinel\Contracts\MetricsRepository;
 use LaraGram\Sentinel\Contracts\PrunableRepository;
 use LaraGram\Sentinel\Storage\DatabaseEntriesRepository;
 use LaraGram\Sentinel\Storage\DatabaseMetricsRepository;
+use LaraGram\Sentinel\Storage\RedisBuffer;
 use LaraGram\Sentinel\Telegram\BotInspector;
 use LaraGram\Support\Facades\Route;
 use LaraGram\Support\ServiceProvider;
@@ -38,6 +41,13 @@ class SentinelServiceProvider extends ServiceProvider
             (int) config('sentinel.retention.metrics', 7),
         ));
 
+        $this->app->singleton(RedisBuffer::class, fn ($app) => new RedisBuffer(
+            $app->make(RedisFactory::class),
+            config('sentinel.storage.redis.connection'),
+            (string) config('sentinel.storage.redis.key', 'sentinel:buffer'),
+            (int) config('sentinel.storage.redis.max_batches', 100000),
+        ));
+
         $this->app->alias(DatabaseEntriesRepository::class, EntriesRepository::class);
         $this->app->alias(DatabaseEntriesRepository::class, PrunableRepository::class);
         $this->app->alias(DatabaseEntriesRepository::class, ClearableRepository::class);
@@ -57,6 +67,7 @@ class SentinelServiceProvider extends ServiceProvider
     {
         $this->registerCommands();
         $this->registerPublishing();
+        $this->registerFlushSchedule();
 
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
@@ -112,11 +123,37 @@ class SentinelServiceProvider extends ServiceProvider
         $this->commands([
             Console\CheckCommand::class,
             Console\ClearCommand::class,
+            Console\FlushCommand::class,
             Console\InstallCommand::class,
             Console\PauseCommand::class,
             Console\PruneCommand::class,
             Console\ResumeCommand::class,
         ]);
+    }
+
+    /**
+     * Flush the Redis buffer every minute through the application's scheduler.
+     *
+     * Each run keeps flushing for most of the minute, so the dashboard stays
+     * a few seconds behind. Turn "schedule" off to run `sentinel:flush
+     * --seconds=0` under a process supervisor instead.
+     *
+     * @return void
+     */
+    protected function registerFlushSchedule()
+    {
+        if (! config('sentinel.enabled')
+            || config('sentinel.storage.driver', 'database') !== 'redis'
+            || ! config('sentinel.storage.redis.schedule', true)) {
+            return;
+        }
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            $schedule->command('sentinel:flush')
+                ->everyMinute()
+                ->withoutOverlapping(5)
+                ->runInBackground();
+        });
     }
 
     /**

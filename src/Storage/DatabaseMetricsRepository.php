@@ -3,6 +3,7 @@
 namespace LaraGram\Sentinel\Storage;
 
 use LaraGram\Database\ConnectionResolverInterface;
+use LaraGram\Database\DetectsConcurrencyErrors;
 use LaraGram\Database\Query\Expression;
 use LaraGram\Sentinel\Contracts\ClearableRepository;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
@@ -12,6 +13,13 @@ use RuntimeException;
 
 class DatabaseMetricsRepository implements MetricsRepository, ClearableRepository
 {
+    use DetectsConcurrencyErrors;
+
+    /**
+     * How many times a write that lost a deadlock or lock wait is tried.
+     */
+    protected const WRITE_ATTEMPTS = 4;
+
     /**
      * The value types that remember when their key was first seen.
      *
@@ -109,20 +117,55 @@ class DatabaseMetricsRepository implements MetricsRepository, ClearableRepositor
             }
         }
 
+        ksort($rows);
+
         foreach ($rows as $aggregate => $aggregateRows) {
+            // Every writer locks the rows in the order of the unique key, so
+            // two concurrent upserts of the same buckets cannot deadlock.
+            ksort($aggregateRows, SORT_STRING);
+
             foreach (array_chunk(array_values($aggregateRows), $this->chunkSize) as $chunk) {
-                $this->upsert($aggregate, $chunk);
+                $this->retryOnLockConflict(fn () => $this->upsert($aggregate, $chunk));
             }
         }
 
         if ($values !== []) {
-            $this->connection()->table('sentinel_values')->upsert(array_map(fn ($value) => [
+            $rows = array_map(fn ($value) => [
                 'timestamp' => $value['timestamp'],
                 'type' => $value['type'],
                 'key' => $value['key'],
                 'key_hash' => md5($value['key']),
                 'value' => json_encode($value['value'], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-            ], $values), ['type', 'key_hash'], ['timestamp', 'value']);
+            ], $values);
+
+            usort($rows, fn ($a, $b) => [$a['type'], $a['key_hash']] <=> [$b['type'], $b['key_hash']]);
+
+            foreach (array_chunk($rows, $this->chunkSize) as $chunk) {
+                $this->retryOnLockConflict(fn () => $this->connection()->table('sentinel_values')
+                    ->upsert($chunk, ['type', 'key_hash'], ['timestamp', 'value']));
+            }
+        }
+    }
+
+    /**
+     * Run a write again when it lost a deadlock or timed out waiting for a
+     * lock, which concurrent updates writing the same buckets can cause.
+     *
+     * @param  callable  $callback
+     * @return mixed
+     */
+    protected function retryOnLockConflict(callable $callback): mixed
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return $callback();
+            } catch (\Throwable $e) {
+                if ($attempt >= static::WRITE_ATTEMPTS || ! $this->causedByConcurrencyError($e)) {
+                    throw $e;
+                }
+
+                usleep(random_int(10, 50) * 1000 * $attempt);
+            }
         }
     }
 
@@ -443,15 +486,15 @@ class DatabaseMetricsRepository implements MetricsRepository, ClearableRepositor
     public function trim(): void
     {
         foreach (Sentinel::PERIODS as $period) {
-            $this->connection()->table('sentinel_aggregates')
+            $this->retryOnLockConflict(fn () => $this->connection()->table('sentinel_aggregates')
                 ->where('period', $period)
                 ->where('bucket', '<', time() - ($period * 60 * 2))
-                ->delete();
+                ->delete());
         }
 
-        $this->connection()->table('sentinel_values')
+        $this->retryOnLockConflict(fn () => $this->connection()->table('sentinel_values')
             ->where('timestamp', '<', time() - (max(1, $this->retentionDays) * 86400))
-            ->delete();
+            ->delete());
     }
 
     /**

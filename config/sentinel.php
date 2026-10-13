@@ -85,16 +85,32 @@ return [
     | Sentinel Storage
     |--------------------------------------------------------------------------
     |
-    | The database connection used to store recorded entries and metrics.
-    | Using a dedicated connection keeps monitoring writes away from your
-    | bot's own tables. Entries and metrics are flushed once per update.
+    | Entries and metrics always end up in the database below; a dedicated
+    | connection keeps monitoring writes away from your bot's own tables.
+    |
+    | "database": every update writes its batch to the database when it ends.
+    | "redis": every update pushes its batch to a Redis list instead (one
+    | command, no database locks) and `sentinel:flush` writes the buffered
+    | batches together. It is scheduled every minute through your scheduler
+    | unless "schedule" is off; then run `sentinel:flush --seconds=0` under a
+    | process supervisor. Use it for bots that get bursts of updates.
     |
     */
 
     'storage' => [
+        'driver' => env('SENTINEL_STORAGE_DRIVER', 'database'),
+
         'database' => [
             'connection' => env('SENTINEL_DB_CONNECTION'),
             'chunk' => 1000,
+        ],
+
+        'redis' => [
+            'connection' => env('SENTINEL_REDIS_CONNECTION', 'default'),
+            'key' => env('SENTINEL_REDIS_KEY', 'sentinel:buffer'),
+            'max_batches' => (int) env('SENTINEL_REDIS_MAX_BATCHES', 100000),
+            'flush_size' => 500,
+            'schedule' => env('SENTINEL_REDIS_SCHEDULE', true),
         ],
     ],
 

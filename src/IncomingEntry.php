@@ -3,6 +3,7 @@
 namespace LaraGram\Sentinel;
 
 use LaraGram\Support\Str;
+use LaraGram\Support\Tempora;
 
 class IncomingEntry
 {
@@ -274,5 +275,37 @@ class IncomingEntry
             'content' => $this->content,
             'created_at' => $this->recordedAt->toDateTimeString(),
         ];
+    }
+
+    /**
+     * Get the entry as it is kept in the storage buffer.
+     *
+     * @return array
+     */
+    public function toBuffer(): array
+    {
+        return $this->toArray() + ['tags' => $this->tags];
+    }
+
+    /**
+     * Restore an entry from the storage buffer.
+     *
+     * @param  array  $row
+     * @return static
+     */
+    public static function fromBuffer(array $row)
+    {
+        $entry = new static([], $row['uuid']);
+
+        $entry->batchId = $row['batch_id'];
+        $entry->type = $row['type'];
+        $entry->familyHash = $row['family_hash'];
+        $entry->connection = $row['connection'];
+        $entry->displayOnIndex = (bool) $row['should_display_on_index'];
+        $entry->content = (array) $row['content'];
+        $entry->tags = (array) ($row['tags'] ?? []);
+        $entry->recordedAt = Tempora::parse($row['created_at']);
+
+        return $entry;
     }
 }
