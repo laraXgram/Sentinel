@@ -17,6 +17,11 @@ use RuntimeException;
 class DatabaseEntriesRepository implements EntriesRepository, ClearableRepository, PrunableRepository
 {
     /**
+     * Strings longer than this are cut when an entry's content is too large.
+     */
+    protected const SHORTENED_STRING_LENGTH = 2000;
+
+    /**
      * The tags currently being monitored.
      *
      * @var array<int, string>|null
@@ -29,12 +34,16 @@ class DatabaseEntriesRepository implements EntriesRepository, ClearableRepositor
      * @param  \LaraGram\Database\ConnectionResolverInterface  $db
      * @param  string|null  $connection
      * @param  int  $chunkSize
+     * @param  int  $chunkBytes  Content bytes one insert may carry, kept under max_allowed_packet.
+     * @param  int  $entryBytes  Largest content one entry is stored with.
      * @return void
      */
     public function __construct(
         protected ConnectionResolverInterface $db,
         protected ?string $connection = null,
         protected int $chunkSize = 1000,
+        protected int $chunkBytes = 1048576,
+        protected int $entryBytes = 262144,
     ) {
     }
 
@@ -160,15 +169,9 @@ class DatabaseEntriesRepository implements EntriesRepository, ClearableRepositor
             return;
         }
 
-        $entries->chunk($this->chunkSize)->each(function (Collection $chunk) {
-            $this->table('sentinel_entries')->insert($chunk->map(function (IncomingEntry $entry) {
-                $row = $entry->toArray();
-
-                $row['content'] = json_encode($row['content'], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
-
-                return $row;
-            })->values()->all());
-        });
+        foreach ($this->chunksWithinPacket($entries->map(fn (IncomingEntry $entry) => $this->row($entry))) as $chunk) {
+            $this->table('sentinel_entries')->insert($chunk);
+        }
 
         $tags = $entries->flatMap(fn (IncomingEntry $entry) => array_map(fn ($tag) => [
             'entry_uuid' => $entry->uuid,
@@ -178,6 +181,96 @@ class DatabaseEntriesRepository implements EntriesRepository, ClearableRepositor
         $tags->unique(fn ($row) => $row['entry_uuid'].'|'.$row['tag'])
             ->chunk($this->chunkSize)
             ->each(fn (Collection $chunk) => $this->table('sentinel_entries_tags')->insert($chunk->values()->all()));
+    }
+
+    /**
+     * Get the row an entry is stored as, its content no larger than the
+     * entry limit: long strings are cut first, and content still too large
+     * is replaced by a note of its size.
+     *
+     * @param  \LaraGram\Sentinel\IncomingEntry  $entry
+     * @return array
+     */
+    protected function row(IncomingEntry $entry): array
+    {
+        $row = $entry->toArray();
+
+        $content = $this->encode($row['content']);
+
+        if (strlen($content) > $this->entryBytes) {
+            $content = $this->encode($this->shorten($row['content']));
+        }
+
+        if (strlen($content) > $this->entryBytes) {
+            $content = $this->encode([
+                'truncated' => true,
+                'size' => strlen($content),
+                'hostname' => $row['content']['hostname'] ?? null,
+            ]);
+        }
+
+        $row['content'] = $content;
+
+        return $row;
+    }
+
+    /**
+     * Encode an entry's content.
+     *
+     * @param  array  $content
+     * @return string
+     */
+    protected function encode(array $content): string
+    {
+        return (string) json_encode($content, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+    }
+
+    /**
+     * Cut every long string in the content.
+     *
+     * @param  array  $content
+     * @return array
+     */
+    protected function shorten(array $content): array
+    {
+        array_walk_recursive($content, function (&$value) {
+            if (is_string($value) && mb_strlen($value) > static::SHORTENED_STRING_LENGTH) {
+                $value = mb_substr($value, 0, static::SHORTENED_STRING_LENGTH).'… (cut)';
+            }
+        });
+
+        return $content;
+    }
+
+    /**
+     * Split rows into inserts that stay under both the row and byte limits,
+     * so one statement never exceeds the server's max_allowed_packet.
+     *
+     * @param  \LaraGram\Support\Collection<int, array>  $rows
+     * @return \Generator<int, array<int, array>>
+     */
+    protected function chunksWithinPacket(Collection $rows): \Generator
+    {
+        $chunk = [];
+        $bytes = 0;
+
+        foreach ($rows as $row) {
+            $size = strlen($row['content']) + 256;
+
+            if ($chunk !== [] && (count($chunk) >= $this->chunkSize || $bytes + $size > $this->chunkBytes)) {
+                yield $chunk;
+
+                $chunk = [];
+                $bytes = 0;
+            }
+
+            $chunk[] = $row;
+            $bytes += $size;
+        }
+
+        if ($chunk !== []) {
+            yield $chunk;
+        }
     }
 
     /**

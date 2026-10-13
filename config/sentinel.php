@@ -103,6 +103,8 @@ return [
         'database' => [
             'connection' => env('SENTINEL_DB_CONNECTION'),
             'chunk' => 1000,
+            'chunk_bytes' => 1048576,   // per insert; keep well under max_allowed_packet
+            'entry_bytes' => 262144,    // larger entries have their long strings cut
         ],
 
         'redis' => [

@@ -32,6 +32,8 @@ class SentinelServiceProvider extends ServiceProvider
             $app->make(ConnectionResolverInterface::class),
             config('sentinel.storage.database.connection'),
             (int) config('sentinel.storage.database.chunk', 1000),
+            (int) config('sentinel.storage.database.chunk_bytes', 1048576),
+            (int) config('sentinel.storage.database.entry_bytes', 262144),
         ));
 
         $this->app->singleton(DatabaseMetricsRepository::class, fn ($app) => new DatabaseMetricsRepository(

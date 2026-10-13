@@ -28,7 +28,7 @@ class QueryWatcher extends Watcher
      */
     public function recordQuery(QueryExecuted $event)
     {
-        if (! Sentinel::isRecording()) {
+        if (! Sentinel::isRecording() || $this->touchesSentinelTables($event->sql)) {
             return;
         }
 
@@ -62,6 +62,19 @@ class QueryWatcher extends Watcher
         if ($slow) {
             Sentinel::metric('slow_query', json_encode([$event->sql, $location]), $time, ['count', 'max'], '');
         }
+    }
+
+    /**
+     * Determine if a query reads or writes Sentinel's own tables, such as
+     * `sentinel:prune` deleting old entries. Recording those would only feed
+     * Sentinel's storage back into itself, with queries that can be huge.
+     *
+     * @param  string  $sql
+     * @return bool
+     */
+    protected function touchesSentinelTables(string $sql): bool
+    {
+        return preg_match('/[`"\[\s.]sentinel_(entries|entries_tags|monitoring|aggregates|values)\b/i', $sql) === 1;
     }
 
     /**
