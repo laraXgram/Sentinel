@@ -20,7 +20,7 @@
     "require": {
         "php": "^8.3",
         "ext-json": "*",
-        "laraxgram/core": "^4"
+        "laraxgram/core": "^4.5"
     },
     "autoload": {
         "psr-4": {
