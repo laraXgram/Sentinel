@@ -19,6 +19,7 @@ import PerformancePage from './pages/performance.js';
 import ServersPage from './pages/servers.js';
 import PlaygroundPage from './pages/playground.js';
 import SettingsPage from './pages/settings.js';
+import { QueuePage, QueueJobsPage, QueueJobPage, QueueBatchesPage, QueueBatchPage, QueueMetricsPage, QueueMetricPage, QueueMonitoringPage, QueueTagPage } from './pages/queue.js';
 
 const config = window.Sentinel || {};
 
@@ -48,6 +49,14 @@ const NAV = [
         { key: 'event', label: 'Events', href: '#/entries/event', icon: 'radio', count: 'event', hideEmpty: true },
         { key: 'alert', label: 'Alerts', href: '#/entries/alert', icon: 'bell', count: 'alert', hideEmpty: true },
     ]],
+    ['Queues', [
+        { key: 'queue', label: 'Queues', href: '#/queue', icon: 'layers' },
+        { key: 'queue-jobs', label: 'Queued Jobs', href: '#/queue/jobs/pending', icon: 'list' },
+        { key: 'queue-failed', label: 'Failed Jobs', href: '#/queue/jobs/failed', icon: 'alertTriangle', count: 'queue_failed', alert: true },
+        { key: 'queue-batches', label: 'Batches', href: '#/queue/batches', icon: 'card' },
+        { key: 'queue-metrics', label: 'Queue Metrics', href: '#/queue/metrics/jobs', icon: 'gauge' },
+        { key: 'queue-monitoring', label: 'Monitored Tags', href: '#/queue/monitoring', icon: 'tag' },
+    ]],
     ['System', [
         { key: 'performance', label: 'Performance', href: '#/performance', icon: 'activity' },
         { key: 'servers', label: 'Servers & Network', href: '#/servers', icon: 'server' },
@@ -71,6 +80,15 @@ const ROUTES = [
     ['/performance', PerformancePage, 'performance'],
     ['/servers', ServersPage, 'servers'],
     ['/settings', SettingsPage, 'settings'],
+    ['/queue', QueuePage, 'queue'],
+    ['/queue/jobs/:list', QueueJobsPage, (params) => (params.list === 'failed' ? 'queue-failed' : 'queue-jobs')],
+    ['/queue/jobs/:list/:id', QueueJobPage, (params) => (params.list === 'failed' ? 'queue-failed' : 'queue-jobs')],
+    ['/queue/batches', QueueBatchesPage, 'queue-batches'],
+    ['/queue/batches/:id', QueueBatchPage, 'queue-batches'],
+    ['/queue/metrics/:kind', QueueMetricsPage, 'queue-metrics'],
+    ['/queue/metrics/:kind/:id', QueueMetricPage, 'queue-metrics'],
+    ['/queue/monitoring', QueueMonitoringPage, 'queue-monitoring'],
+    ['/queue/monitoring/:tag', QueueTagPage, 'queue-monitoring'],
 ];
 
 class App {
