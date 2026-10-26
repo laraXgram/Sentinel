@@ -24,6 +24,7 @@ On top of that it knows Telegram:
 | **Listeners** | Every registered listen with hit counts and timings, plus the updates no listen matched. |
 | **Conversations** | Each conversation as a funnel: started, answered, invalid answers, completed, cancelled. |
 | **API calls** | Volume, latency, errors grouped by method/code, and **flood waits** (`retry_after`) per method. |
+| **Queues** | Runs your Redis queue workers (`sentinel:queue`): auto-balanced supervisors, pending / completed / failed jobs with retries, batches, throughput and runtime per job and queue, monitored tags and long-wait alerts. |
 | **Telegram alerts** | Get a message when an exception is thrown, the webhook fails, updates pile up, a job fails or Telegram flood-limits the bot. |
 | **Servers & network** | CPU, memory and disk of each server, Telegram API latency, and the health of the proxy pool. |
 

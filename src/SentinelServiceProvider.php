@@ -58,6 +58,8 @@ class SentinelServiceProvider extends ServiceProvider
         $this->app->singleton(BotInspector::class);
         $this->app->singleton(Alerter::class);
         $this->app->singleton(Auth\Authenticator::class);
+
+        $this->app->register(Queue\QueueServiceProvider::class);
     }
 
     /**

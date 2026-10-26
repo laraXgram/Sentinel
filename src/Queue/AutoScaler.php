@@ -1,0 +1,189 @@
+<?php
+
+namespace LaraGram\Sentinel\Queue;
+
+use LaraGram\Contracts\Queue\Factory as QueueFactory;
+use LaraGram\Support\Collection;
+use LaraGram\Sentinel\Queue\Contracts\MetricsRepository;
+
+class AutoScaler
+{
+    /**
+     * The queue factory implementation.
+     *
+     * @var \LaraGram\Contracts\Queue\Factory
+     */
+    public $queue;
+
+    /**
+     * The metrics repository implementation.
+     *
+     * @var \LaraGram\Sentinel\Queue\Contracts\MetricsRepository
+     */
+    public $metrics;
+
+    /**
+     * Create a new auto-scaler instance.
+     *
+     * @param  \LaraGram\Contracts\Queue\Factory  $queue
+     * @param  \LaraGram\Sentinel\Queue\Contracts\MetricsRepository  $metrics
+     * @return void
+     */
+    public function __construct(QueueFactory $queue, MetricsRepository $metrics)
+    {
+        $this->queue = $queue;
+        $this->metrics = $metrics;
+    }
+
+    /**
+     * Balance the workers on the given supervisor.
+     *
+     * @param  \LaraGram\Sentinel\Queue\Supervisor  $supervisor
+     * @return void
+     */
+    public function scale(Supervisor $supervisor)
+    {
+        $pools = $this->poolsByQueue($supervisor);
+
+        $workers = $this->numberOfWorkersPerQueue(
+            $supervisor, $this->timeToClearPerQueue($supervisor, $pools)
+        );
+
+        $workers->each(function ($workers, $queue) use ($supervisor, $pools) {
+            $this->scalePool($supervisor, $pools[$queue], $workers);
+        });
+    }
+
+    /**
+     * Get the process pools keyed by their queue name.
+     *
+     * @param  \LaraGram\Sentinel\Queue\Supervisor  $supervisor
+     * @return \LaraGram\Support\Collection
+     */
+    protected function poolsByQueue(Supervisor $supervisor)
+    {
+        return $supervisor->processPools->mapWithKeys(function ($pool) {
+            return [$pool->queue() => $pool];
+        });
+    }
+
+    /**
+     * Get the times in milliseconds needed to clear the queues.
+     *
+     * @param  \LaraGram\Sentinel\Queue\Supervisor  $supervisor
+     * @param  \LaraGram\Support\Collection  $pools
+     * @return \LaraGram\Support\Collection
+     */
+    protected function timeToClearPerQueue(Supervisor $supervisor, Collection $pools)
+    {
+        return $pools->mapWithKeys(function ($pool, $queue) use ($supervisor) {
+            $queues = collect(explode(',', $queue))->map(function ($_queue) use ($supervisor) {
+                $size = $this->queue->connection($supervisor->options->connection)->readyNow($_queue);
+
+                return [
+                    'size' => $size,
+                    'time' => ($size * $this->metrics->runtimeForQueue($_queue)),
+                ];
+            });
+
+            return [$queue => [
+                'size' => $queues->sum('size'),
+                'time' => $queues->sum('time'),
+            ]];
+        });
+    }
+
+    /**
+     * Get the number of workers needed per queue for proper balance.
+     *
+     * @param  \LaraGram\Sentinel\Queue\Supervisor  $supervisor
+     * @param  \LaraGram\Support\Collection  $queues
+     * @return \LaraGram\Support\Collection
+     */
+    protected function numberOfWorkersPerQueue(Supervisor $supervisor, Collection $queues)
+    {
+        $timeToClearAll = $queues->sum('time');
+        $totalJobs = $queues->sum('size');
+        $totalLogJobs = $supervisor->options->autoScaleLogarithmically()
+            ? $queues->sum(fn ($queue) => log1p($queue['size']))
+            : 0;
+
+        return $queues->mapWithKeys(function ($timeToClear, $queue) use ($supervisor, $timeToClearAll, $totalJobs, $totalLogJobs) {
+            if (! $supervisor->options->balancing()) {
+                $targetProcesses = min(
+                    $supervisor->options->maxProcesses,
+                    max($supervisor->options->minProcesses, $timeToClear['size'])
+                );
+
+                return [$queue => $targetProcesses];
+            }
+
+            if ($timeToClearAll > 0 &&
+                $supervisor->options->autoScaling()) {
+                if ($supervisor->options->autoScaleByNumberOfJobs()) {
+                    $numberOfProcesses = $timeToClear['size'] / $totalJobs;
+                } elseif ($supervisor->options->autoScaleLogarithmically()) {
+                    $numberOfProcesses = log1p($timeToClear['size']) / $totalLogJobs;
+                } else {
+                    $numberOfProcesses = $timeToClear['time'] / $timeToClearAll;
+                }
+
+                return [$queue => $numberOfProcesses *= $supervisor->options->maxProcesses];
+            } elseif ($timeToClearAll == 0 &&
+                      $supervisor->options->autoScaling()) {
+                return [
+                    $queue => $timeToClear['size']
+                        ? $supervisor->options->maxProcesses
+                        : $supervisor->options->minProcesses,
+                ];
+            }
+
+            return [$queue => $supervisor->options->maxProcesses / count($supervisor->processPools)];
+        })->sort();
+    }
+
+    /**
+     * Scale the given pool to the recommended number of workers.
+     *
+     * @param  \LaraGram\Sentinel\Queue\Supervisor  $supervisor
+     * @param  \LaraGram\Sentinel\Queue\ProcessPool  $pool
+     * @param  float  $workers
+     * @return void
+     */
+    protected function scalePool(Supervisor $supervisor, $pool, $workers)
+    {
+        $supervisor->pruneTerminatingProcesses();
+
+        $totalProcessCount = $pool->totalProcessCount();
+
+        $desiredProcessCount = (int) ceil($workers);
+
+        if ($desiredProcessCount > $totalProcessCount) {
+            $maxUpShift = min(
+                max(0, $supervisor->options->maxProcesses - $supervisor->totalProcessCount()),
+                $supervisor->options->balanceMaxShift
+            );
+
+            $pool->scale(
+                min(
+                    $totalProcessCount + $maxUpShift,
+                    max($supervisor->options->minProcesses, $supervisor->options->maxProcesses - (($supervisor->processPools->count() - 1) * $supervisor->options->minProcesses)),
+                    $desiredProcessCount
+                )
+            );
+        } elseif ($desiredProcessCount < $totalProcessCount) {
+            $maxDownShift = min(
+                $supervisor->totalProcessCount() - $supervisor->options->minProcesses,
+                $supervisor->options->balanceMaxShift
+            );
+
+            $pool->scale(
+                max(
+                    $totalProcessCount - $maxDownShift,
+                    $supervisor->options->minProcesses,
+                    $desiredProcessCount
+                )
+            );
+        }
+    }
+}

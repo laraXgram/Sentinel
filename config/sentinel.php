@@ -1,6 +1,7 @@
 <?php
 
 use LaraGram\Sentinel\Watchers;
+use LaraGram\Support\Str;
 
 return [
 
@@ -238,6 +239,7 @@ return [
             'pending_updates' => true,
             'flood_waits' => true,
             'failed_jobs' => true,
+            'long_waits' => true,
         ],
     ],
 
@@ -254,6 +256,118 @@ return [
     'server_name' => env('SENTINEL_SERVER_NAME', gethostname()),
 
     'directories' => explode(':', env('SENTINEL_SERVER_DIRECTORIES', '/')),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Supervisor
+    |--------------------------------------------------------------------------
+    |
+    | `php laragram sentinel:queue` runs your Redis queue workers: it starts
+    | and balances worker processes per supervisor below, and records every
+    | job, its metrics and its failures for the Queues pages of the dashboard.
+    |
+    | use:     the Redis connection (config/database.php) the jobs are kept in.
+    | waits:   seconds a queue may wait before a long-wait alert is sent.
+    | trim:    minutes recent, pending, completed, failed and monitored jobs
+    |          are kept for.
+    | silenced / silenced_tags: jobs hidden from the completed list.
+    | defaults / environments: the supervisors per environment; each runs
+    |          `maxProcesses` workers for its queues and balances them with
+    |          "auto" (by workload), "simple" (evenly) or false.
+    |
+    */
+
+    'queue' => [
+        'name' => env('SENTINEL_QUEUE_NAME'),
+
+        'use' => 'default',
+
+        'prefix' => env(
+            'SENTINEL_QUEUE_PREFIX',
+            Str::slug(env('APP_NAME', 'laragram'), '_').'_sentinel_queue:'
+        ),
+
+        'waits' => [
+            'redis:default' => 60,
+        ],
+
+        'trim' => [
+            'recent' => 60,
+            'pending' => 60,
+            'completed' => 60,
+            'recent_failed' => 10080,
+            'failed' => 10080,
+            'monitored' => 10080,
+        ],
+
+        'silenced' => [
+            // App\Jobs\ExampleJob::class,
+        ],
+
+        'silenced_tags' => [
+            // 'broadcasts',
+        ],
+
+        // Sentinel's scheduler takes a metrics snapshot every five minutes.
+        'metrics' => [
+            'schedule' => env('SENTINEL_QUEUE_SNAPSHOTS', true),
+
+            'trim_snapshots' => [
+                'job' => 24,
+                'queue' => 24,
+            ],
+        ],
+
+        'fast_termination' => false,
+
+        'memory_limit' => 64,
+
+        'defaults' => [
+            'supervisor-1' => [
+                'connection' => 'redis',
+                'queue' => ['default'],
+                'balance' => 'auto',
+                'autoScalingStrategy' => 'time',
+                'maxProcesses' => 1,
+                'maxTime' => 0,
+                'maxJobs' => 0,
+                'memory' => 128,
+                'tries' => 1,
+                'timeout' => 60,
+                'nice' => 0,
+            ],
+        ],
+
+        'environments' => [
+            'production' => [
+                'supervisor-1' => [
+                    'maxProcesses' => 10,
+                    'balanceMaxShift' => 1,
+                    'balanceCooldown' => 3,
+                ],
+            ],
+
+            'local' => [
+                'supervisor-1' => [
+                    'maxProcesses' => 3,
+                ],
+            ],
+        ],
+
+        // Files `sentinel:queue:listen` watches to restart the workers.
+        'watch' => [
+            'app',
+            'bootstrap',
+            'config/**/*.php',
+            'database/**/*.php',
+            'listens',
+            'routes',
+            'resources/**/*.php',
+            'composer.lock',
+            'composer.json',
+            '.env',
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------
