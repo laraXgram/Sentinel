@@ -6,6 +6,7 @@ use LaraGram\Console\Attribute\AsCommand;
 use LaraGram\Console\Command;
 use LaraGram\Sentinel\Alerts\Alerter;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
+use LaraGram\Sentinel\Telegram\ApiServerStats;
 use LaraGram\Sentinel\Telegram\BotInspector;
 use LaraGram\Support\Str;
 use Throwable;
@@ -42,9 +43,10 @@ class CheckCommand extends Command
      * @param  \LaraGram\Sentinel\Contracts\MetricsRepository  $metrics
      * @param  \LaraGram\Sentinel\Telegram\BotInspector  $bots
      * @param  \LaraGram\Sentinel\Alerts\Alerter  $alerter
+     * @param  \LaraGram\Sentinel\Telegram\ApiServerStats  $apiServer
      * @return int
      */
-    public function handle(MetricsRepository $metrics, BotInspector $bots, Alerter $alerter)
+    public function handle(MetricsRepository $metrics, BotInspector $bots, Alerter $alerter, ApiServerStats $apiServer)
     {
         $interval = max(1, (int) $this->option('interval'));
         $webhookInterval = max($interval, (int) config('sentinel.webhook.interval', 30));
@@ -62,6 +64,7 @@ class CheckCommand extends Command
 
                 rescue(fn () => $this->snapshotWebhooks($metrics, $bots, $alerter));
                 rescue(fn () => $this->snapshotProxies($metrics));
+                rescue(fn () => $this->snapshotApiServer($metrics, $apiServer));
             }
 
             if ($this->option('once')) {
@@ -116,6 +119,48 @@ class CheckCommand extends Command
                 'uptime' => $this->uptime(),
             ],
         ]]);
+    }
+
+    /**
+     * Record the statistics of the local Bot API server, when there is one.
+     *
+     * @param  \LaraGram\Sentinel\Contracts\MetricsRepository  $metrics
+     * @param  \LaraGram\Sentinel\Telegram\ApiServerStats  $apiServer
+     * @return void
+     */
+    protected function snapshotApiServer(MetricsRepository $metrics, ApiServerStats $apiServer): void
+    {
+        $stats = $apiServer->fetch();
+
+        if (! $stats['configured']) {
+            return;
+        }
+
+        $now = time();
+        $server = $stats['server'];
+
+        // Rates are per second over the last minute, the window closest to a snapshot.
+        $rows = $stats['ok'] ? [
+            ['type' => 'api_server_requests', 'key' => 'server', 'value' => (float) ($server['request_count']['1min'] ?? 0), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']],
+            ['type' => 'api_server_updates', 'key' => 'server', 'value' => (float) ($server['update_count']['1min'] ?? 0), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']],
+            ['type' => 'api_server_errors', 'key' => 'server', 'value' => (float) ($server['response_count_error']['1min'] ?? 0), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']],
+            ['type' => 'api_server_active', 'key' => 'server', 'value' => (int) ($server['active_requests'] ?? 0), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']],
+            ['type' => 'api_server_cpu', 'key' => 'server', 'value' => (float) ($server['total_cpu']['1min'] ?? 0), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']],
+            ['type' => 'api_server_memory', 'key' => 'server', 'value' => (int) round(($server['rss'] ?? 0) / 1048576), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']],
+        ] : [];
+
+        foreach ($stats['bots'] as $bot) {
+            $rows[] = ['type' => 'api_server_bot_updates', 'key' => (string) ($bot['connection'] ?? $bot['username'] ?? $bot['id']), 'value' => (float) ($bot['update_count/sec']['1min'] ?? 0), 'timestamp' => $now, 'connection' => (string) ($bot['connection'] ?? ''), 'aggregates' => ['avg', 'max']];
+        }
+
+        $metrics->store($rows, [[
+            'type' => 'api_server',
+            'key' => 'server',
+            'timestamp' => $now,
+            'value' => $stats,
+        ]]);
+
+        $this->line(sprintf('  <fg=gray>%s</> api server %s', now()->format('H:i:s'), $stats['ok'] ? sprintf('<fg=gray>bots:</> %d <fg=gray>requests/s:</> %s', $server['bot_count'] ?? 0, $server['request_count']['1min'] ?? 0) : '<fg=red>'.$stats['error'].'</>'));
     }
 
     /**

@@ -28,6 +28,7 @@ Route::prefix('api')->name('api.')->group(function () {
     Route::get('metrics/exceptions', [MetricsController::class, 'exceptions'])->name('metrics.exceptions');
     Route::get('metrics/performance', [MetricsController::class, 'performance'])->name('metrics.performance');
     Route::get('metrics/servers', [MetricsController::class, 'servers'])->name('metrics.servers');
+    Route::get('metrics/api-server', [MetricsController::class, 'apiServer'])->name('metrics.api-server');
 
     // Entries...
     Route::get('entries', [EntriesController::class, 'index'])->name('entries');

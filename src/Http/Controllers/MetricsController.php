@@ -4,6 +4,7 @@ namespace LaraGram\Sentinel\Http\Controllers;
 
 use LaraGram\Http\Request;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
+use LaraGram\Sentinel\Telegram\ApiServerStats;
 use LaraGram\Sentinel\Telegram\ListenerMap;
 use LaraGram\Support\Collection;
 
@@ -288,6 +289,35 @@ class MetricsController extends Controller
             'proxy' => $proxy,
             'proxy_snapshot' => $this->metrics->values('proxy')->first(),
             'anti_flood' => config('bot.anti_flood'),
+        ]);
+    }
+
+    /**
+     * The local Bot API server: its live statistics page and their history.
+     *
+     * @param  \LaraGram\Http\Request  $request
+     * @param  \LaraGram\Sentinel\Telegram\ApiServerStats  $apiServer
+     * @return \LaraGram\Http\JsonResponse
+     */
+    public function apiServer(Request $request, ApiServerStats $apiServer)
+    {
+        $period = $this->period($request);
+
+        $graph = fn (string $type, string $aggregate = 'avg') => $this->series($this->metrics->graph([$type], $aggregate, $period)[$type]);
+
+        $snapshot = $this->metrics->values('api_server')->first();
+
+        return response()->json([
+            'live' => $apiServer->fetch(),
+            'url' => $apiServer->url(),
+            'snapshot' => $snapshot ? $snapshot->value + ['taken_at' => $snapshot->timestamp] : null,
+            'requests' => $graph('api_server_requests'),
+            'updates' => $graph('api_server_updates'),
+            'errors' => $graph('api_server_errors'),
+            'active' => $graph('api_server_active', 'max'),
+            'cpu' => $graph('api_server_cpu'),
+            'memory' => $graph('api_server_memory', 'max'),
+            'bots' => $graph('api_server_bot_updates'),
         ]);
     }
 

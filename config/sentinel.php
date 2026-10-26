@@ -199,6 +199,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Bot API Server
+    |--------------------------------------------------------------------------
+    |
+    | When your bots talk to a local Bot API server (telegram-bot-api or the
+    | LaraGram API Server) started with --http-stat-port, Sentinel shows its
+    | statistics page on the "API Server" page and `sentinel:check` records
+    | it with the webhooks. The URL defaults to bot.api_server.stat.
+    |
+    */
+
+    'api_server' => [
+        'stats_url' => env('SENTINEL_API_SERVER_STATS_URL'),
+        'timeout' => 5,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Update Playground
     |--------------------------------------------------------------------------
     |

@@ -17,6 +17,7 @@ import ConversationsPage from './pages/conversations.js';
 import ExceptionsPage from './pages/exceptions.js';
 import PerformancePage from './pages/performance.js';
 import ServersPage from './pages/servers.js';
+import ApiServerPage from './pages/apiServer.js';
 import PlaygroundPage from './pages/playground.js';
 import SettingsPage from './pages/settings.js';
 import { QueuePage, QueueJobsPage, QueueJobPage, QueueBatchesPage, QueueBatchPage, QueueMetricsPage, QueueMetricPage, QueueMonitoringPage, QueueTagPage } from './pages/queue.js';
@@ -60,6 +61,7 @@ const NAV = [
     ['System', [
         { key: 'performance', label: 'Performance', href: '#/performance', icon: 'activity' },
         { key: 'servers', label: 'Servers & Network', href: '#/servers', icon: 'server' },
+        { key: 'api-server', label: 'API Server', href: '#/api-server', icon: 'network' },
         { key: 'settings', label: 'Settings', href: '#/settings', icon: 'settings' },
     ]],
 ];
@@ -79,6 +81,7 @@ const ROUTES = [
     ['/exceptions', ExceptionsPage, 'exceptions'],
     ['/performance', PerformancePage, 'performance'],
     ['/servers', ServersPage, 'servers'],
+    ['/api-server', ApiServerPage, 'api-server'],
     ['/settings', SettingsPage, 'settings'],
     ['/queue', QueuePage, 'queue'],
     ['/queue/jobs/:list', QueueJobsPage, (params) => (params.list === 'failed' ? 'queue-failed' : 'queue-jobs')],
