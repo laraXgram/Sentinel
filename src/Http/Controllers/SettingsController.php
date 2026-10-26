@@ -5,6 +5,7 @@ namespace LaraGram\Sentinel\Http\Controllers;
 use LaraGram\Http\Request;
 use LaraGram\Sentinel\Contracts\EntriesRepository;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
+use LaraGram\Sentinel\Queue\Contracts\JobRepository;
 use LaraGram\Sentinel\Sentinel;
 
 class SettingsController extends Controller
@@ -21,7 +22,11 @@ class SettingsController extends Controller
             'enabled' => (bool) config('sentinel.enabled'),
             'recording' => ! cache('sentinel:pause-recording', false),
             'version' => Sentinel::VERSION,
-            'counts' => method_exists($entries, 'counts') ? $entries->counts() : [],
+            'counts' => [
+                ...(method_exists($entries, 'counts') ? $entries->counts() : []),
+                // Failed queue jobs of the last week; the queue store may live on another Redis.
+                'queue_failed' => rescue(fn () => app(JobRepository::class)->countRecentlyFailed(), 0, false),
+            ],
             'monitoring' => $entries->monitoring(),
             'watchers' => collect(config('sentinel.watchers', []))->map(fn ($options, $class) => [
                 'name' => class_basename($class),

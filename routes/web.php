@@ -6,6 +6,7 @@ use LaraGram\Sentinel\Http\Controllers\EntriesController;
 use LaraGram\Sentinel\Http\Controllers\LoginController;
 use LaraGram\Sentinel\Http\Controllers\MetricsController;
 use LaraGram\Sentinel\Http\Controllers\PlaygroundController;
+use LaraGram\Sentinel\Http\Controllers\Queue;
 use LaraGram\Sentinel\Http\Controllers\SettingsController;
 use LaraGram\Support\Facades\Route;
 
@@ -44,6 +45,35 @@ Route::prefix('api')->name('api.')->group(function () {
     Route::get('playground', [PlaygroundController::class, 'defaults'])->name('playground');
     Route::post('playground', [PlaygroundController::class, 'run'])->name('playground.run');
     Route::post('entries/{id}/replay', [PlaygroundController::class, 'replay'])->name('entries.replay');
+
+    // Queues...
+    Route::prefix('queue')->name('queue.')->group(function () {
+        Route::get('stats', [Queue\DashboardStatsController::class, 'index'])->name('stats');
+        Route::get('workload', [Queue\WorkloadController::class, 'index'])->name('workload');
+        Route::get('masters', [Queue\MasterSupervisorController::class, 'index'])->name('masters');
+
+        Route::get('monitoring', [Queue\MonitoringController::class, 'index'])->name('monitoring');
+        Route::post('monitoring', [Queue\MonitoringController::class, 'store'])->name('monitoring.store');
+        Route::get('monitoring/jobs', [Queue\MonitoringController::class, 'paginate'])->name('monitoring.jobs');
+        Route::delete('monitoring/{tag}', [Queue\MonitoringController::class, 'destroy'])->where('tag', '.*')->name('monitoring.destroy');
+
+        Route::get('metrics/jobs', [Queue\JobMetricsController::class, 'index'])->name('metrics.jobs');
+        Route::get('metrics/jobs/{id}', [Queue\JobMetricsController::class, 'show'])->where('id', '.*')->name('metrics.jobs.show');
+        Route::get('metrics/queues', [Queue\QueueMetricsController::class, 'index'])->name('metrics.queues');
+        Route::get('metrics/queues/{id}', [Queue\QueueMetricsController::class, 'show'])->where('id', '.*')->name('metrics.queues.show');
+
+        Route::get('batches', [Queue\BatchesController::class, 'index'])->name('batches');
+        Route::get('batches/{id}', [Queue\BatchesController::class, 'show'])->name('batches.show');
+        Route::post('batches/{id}/retry', [Queue\BatchesController::class, 'retry'])->name('batches.retry');
+
+        Route::get('jobs/pending', [Queue\PendingJobsController::class, 'index'])->name('jobs.pending');
+        Route::get('jobs/completed', [Queue\CompletedJobsController::class, 'index'])->name('jobs.completed');
+        Route::get('jobs/silenced', [Queue\SilencedJobsController::class, 'index'])->name('jobs.silenced');
+        Route::get('jobs/failed', [Queue\FailedJobsController::class, 'index'])->name('jobs.failed');
+        Route::get('jobs/failed/{id}', [Queue\FailedJobsController::class, 'show'])->name('jobs.failed.show');
+        Route::post('jobs/{id}/retry', [Queue\RetryController::class, 'store'])->name('jobs.retry');
+        Route::get('jobs/{id}', [Queue\JobsController::class, 'show'])->name('jobs.show');
+    });
 
     // Settings...
     Route::get('status', [SettingsController::class, 'status'])->name('status');
