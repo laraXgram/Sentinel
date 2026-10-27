@@ -45,6 +45,8 @@ class Simulator
             'REQUEST_TIME' => time(),
             'HTTP_USER_AGENT' => 'Sentinel Playground',
             'REMOTE_ADDR' => '127.0.0.1',
+            // Replays repeat the id of an update the bot already handled.
+            'LARAGRAM_ALLOW_DUPLICATE' => true,
         ];
 
         if ($connection && ($secret = config("bot.connections.{$connection}.secret_token"))) {
