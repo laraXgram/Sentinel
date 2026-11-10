@@ -1,5 +1,6 @@
 <?php
 
+use LaraGram\Sentinel\Http\Controllers\ArmadaController;
 use LaraGram\Sentinel\Http\Controllers\BotsController;
 use LaraGram\Sentinel\Http\Controllers\DashboardController;
 use LaraGram\Sentinel\Http\Controllers\EntriesController;
@@ -41,6 +42,12 @@ Route::prefix('api')->name('api.')->group(function () {
     Route::get('bots/{connection}', [BotsController::class, 'show'])->name('bots.show');
     Route::post('bots/{connection}/webhook', [BotsController::class, 'setWebhook'])->name('bots.webhook.set');
     Route::delete('bots/{connection}/webhook', [BotsController::class, 'deleteWebhook'])->name('bots.webhook.delete');
+
+    // Armada...
+    Route::get('armada', [ArmadaController::class, 'index'])->name('armada');
+    Route::get('armada/services/{service}', [ArmadaController::class, 'show'])->name('armada.show');
+    Route::post('armada/services/{service}/{action}', [ArmadaController::class, 'action'])->whereIn('action', ['start', 'stop', 'restart'])->name('armada.action');
+    Route::post('armada/processes/{process}/{action}', [ArmadaController::class, 'process'])->whereIn('action', ['start', 'stop', 'restart'])->name('armada.process');
 
     // Playground...
     Route::get('playground', [PlaygroundController::class, 'defaults'])->name('playground');

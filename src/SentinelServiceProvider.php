@@ -56,6 +56,11 @@ class SentinelServiceProvider extends ServiceProvider
         $this->app->alias(DatabaseMetricsRepository::class, MetricsRepository::class);
 
         $this->app->singleton(BotInspector::class);
+        $this->app->singleton(Docker\DockerClient::class, fn () => new Docker\DockerClient(
+            (string) config('sentinel.armada.docker_host', 'unix:///var/run/docker.sock'),
+            (int) config('sentinel.armada.timeout', 5),
+        ));
+        $this->app->singleton(Docker\Armada::class);
         $this->app->singleton(Alerter::class);
         $this->app->singleton(Auth\Authenticator::class);
 

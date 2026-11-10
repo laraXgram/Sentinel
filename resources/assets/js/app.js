@@ -18,6 +18,7 @@ import ExceptionsPage from './pages/exceptions.js';
 import PerformancePage from './pages/performance.js';
 import ServersPage from './pages/servers.js';
 import ApiServerPage from './pages/apiServer.js';
+import { ArmadaPage, ArmadaServicePage } from './pages/armada.js';
 import PlaygroundPage from './pages/playground.js';
 import SettingsPage from './pages/settings.js';
 import { QueuePage, QueueJobsPage, QueueJobPage, QueueBatchesPage, QueueBatchPage, QueueMetricsPage, QueueMetricPage, QueueMonitoringPage, QueueTagPage } from './pages/queue.js';
@@ -62,6 +63,7 @@ const NAV = [
         { key: 'performance', label: 'Performance', href: '#/performance', icon: 'activity' },
         { key: 'servers', label: 'Servers & Network', href: '#/servers', icon: 'server' },
         { key: 'api-server', label: 'API Server', href: '#/api-server', icon: 'network' },
+        { key: 'armada', label: 'Armada', href: '#/armada', icon: 'layers' },
         { key: 'settings', label: 'Settings', href: '#/settings', icon: 'settings' },
     ]],
 ];
@@ -82,6 +84,8 @@ const ROUTES = [
     ['/performance', PerformancePage, 'performance'],
     ['/servers', ServersPage, 'servers'],
     ['/api-server', ApiServerPage, 'api-server'],
+    ['/armada', ArmadaPage, 'armada'],
+    ['/armada/:service', ArmadaServicePage, 'armada'],
     ['/settings', SettingsPage, 'settings'],
     ['/queue', QueuePage, 'queue'],
     ['/queue/jobs/:list', QueueJobsPage, (params) => (params.list === 'failed' ? 'queue-failed' : 'queue-jobs')],

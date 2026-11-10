@@ -6,6 +6,7 @@ use LaraGram\Console\Attribute\AsCommand;
 use LaraGram\Console\Command;
 use LaraGram\Sentinel\Alerts\Alerter;
 use LaraGram\Sentinel\Contracts\MetricsRepository;
+use LaraGram\Sentinel\Docker\Armada;
 use LaraGram\Sentinel\Telegram\ApiServerStats;
 use LaraGram\Sentinel\Telegram\BotInspector;
 use LaraGram\Support\Str;
@@ -44,9 +45,10 @@ class CheckCommand extends Command
      * @param  \LaraGram\Sentinel\Telegram\BotInspector  $bots
      * @param  \LaraGram\Sentinel\Alerts\Alerter  $alerter
      * @param  \LaraGram\Sentinel\Telegram\ApiServerStats  $apiServer
+     * @param  \LaraGram\Sentinel\Docker\Armada  $armada
      * @return int
      */
-    public function handle(MetricsRepository $metrics, BotInspector $bots, Alerter $alerter, ApiServerStats $apiServer)
+    public function handle(MetricsRepository $metrics, BotInspector $bots, Alerter $alerter, ApiServerStats $apiServer, Armada $armada)
     {
         $interval = max(1, (int) $this->option('interval'));
         $webhookInterval = max($interval, (int) config('sentinel.webhook.interval', 30));
@@ -65,6 +67,7 @@ class CheckCommand extends Command
                 rescue(fn () => $this->snapshotWebhooks($metrics, $bots, $alerter));
                 rescue(fn () => $this->snapshotProxies($metrics));
                 rescue(fn () => $this->snapshotApiServer($metrics, $apiServer));
+                rescue(fn () => $this->snapshotArmada($metrics, $alerter, $armada), null, false);
             }
 
             if ($this->option('once')) {
@@ -119,6 +122,67 @@ class CheckCommand extends Command
                 'uptime' => $this->uptime(),
             ],
         ]]);
+    }
+
+    /**
+     * Record the containers of the Armada project, when the application runs
+     * with Armada, and alert about the ones that stopped or are unhealthy.
+     *
+     * @param  \LaraGram\Sentinel\Contracts\MetricsRepository  $metrics
+     * @param  \LaraGram\Sentinel\Alerts\Alerter  $alerter
+     * @param  \LaraGram\Sentinel\Docker\Armada  $armada
+     * @return void
+     */
+    protected function snapshotArmada(MetricsRepository $metrics, Alerter $alerter, Armada $armada): void
+    {
+        if (! $armada->enabled()) {
+            return;
+        }
+
+        $overview = $armada->overview(withProcesses: false);
+
+        // Not running with Armada: the Docker daemon isn't reachable, or the project has no containers...
+        if (! $overview['ok'] || $overview['services'] === []) {
+            return;
+        }
+
+        $now = time();
+        $rows = [];
+
+        foreach ($overview['services'] as $service) {
+            if ($service['cpu'] !== null) {
+                $rows[] = ['type' => 'armada_cpu', 'key' => $service['service'], 'value' => (float) $service['cpu'], 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']];
+            }
+
+            if ($service['memory'] !== null) {
+                $rows[] = ['type' => 'armada_memory', 'key' => $service['service'], 'value' => (int) round($service['memory'] / 1048576), 'timestamp' => $now, 'connection' => '', 'aggregates' => ['avg', 'max']];
+            }
+
+            $problem = match (true) {
+                in_array($service['state'], ['exited', 'dead'], true) => 'stopped',
+                $service['state'] === 'restarting' => 'keeps restarting',
+                $service['health'] === 'unhealthy' => 'is unhealthy',
+                default => null,
+            };
+
+            if ($problem !== null && $alerter->wants('containers')) {
+                $alerter->send('container', $service['service'].'|'.$problem, '🐳 Container '.$problem, [
+                    'The <code>'.e($service['service']).'</code> service of <b>'.e($overview['project']).'</b> '.$problem.'.',
+                    e((string) $service['status']),
+                ]);
+            }
+        }
+
+        $metrics->store($rows, [[
+            'type' => 'armada',
+            'key' => (string) $overview['project'],
+            'timestamp' => $now,
+            'value' => collect($overview)->only(['project', 'engine', 'services'])->all(),
+        ]]);
+
+        $running = collect($overview['services'])->where('state', 'running')->count();
+
+        $this->line(sprintf('  <fg=gray>%s</> armada <fg=gray>containers:</> %d/%d running', now()->format('H:i:s'), $running, count($overview['services'])));
     }
 
     /**

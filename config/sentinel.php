@@ -199,6 +199,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Armada
+    |--------------------------------------------------------------------------
+    |
+    | When your application runs with LaraGram Armada, the "Armada" page shows
+    | every container of the project, their health, resource usage and logs,
+    | and the processes Supervisor runs in the application container, and lets
+    | you start, stop and restart them. `sentinel:check` records their usage
+    | and alerts you when a container stops or turns unhealthy.
+    |
+    | docker_host: the Docker daemon, a socket (unix://) or a socket proxy (tcp://).
+    | project:     the compose project name, detected when left empty.
+    | actions:     allow starting, stopping and restarting from the dashboard.
+    |
+    */
+
+    'armada' => [
+        'enabled' => env('SENTINEL_ARMADA', true),
+        'docker_host' => env('SENTINEL_DOCKER_HOST', 'unix:///var/run/docker.sock'),
+        'project' => env('SENTINEL_ARMADA_PROJECT', env('COMPOSE_PROJECT_NAME')),
+        'actions' => env('SENTINEL_ARMADA_ACTIONS', true),
+        'timeout' => 5,
+        'log_lines' => 300,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Bot API Server
     |--------------------------------------------------------------------------
     |
@@ -257,6 +283,7 @@ return [
             'flood_waits' => true,
             'failed_jobs' => true,
             'long_waits' => true,
+            'containers' => true,
         ],
     ],
 
