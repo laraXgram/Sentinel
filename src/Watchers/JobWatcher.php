@@ -68,7 +68,7 @@ class JobWatcher extends Watcher
      */
     public function recordProcessingJob(JobProcessing $event)
     {
-        $this->started[$event->job->getJobId() ?? spl_object_hash($event->job)] = hrtime(true);
+        $this->started[$event->job->getJobId() ?? spl_object_id($event->job)] = hrtime(true);
     }
 
     /**
@@ -103,7 +103,7 @@ class JobWatcher extends Watcher
      */
     protected function recordFinishedJob($event, string $status, $exception = null)
     {
-        $id = $event->job->getJobId() ?? spl_object_hash($event->job);
+        $id = $event->job->getJobId() ?? spl_object_id($event->job);
         $started = $this->started[$id] ?? null;
         unset($this->started[$id]);
 
