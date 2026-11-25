@@ -254,7 +254,9 @@ class DockerClient
         $response = curl_exec($handle);
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
         $error = curl_error($handle);
-        curl_close($handle);
+        if (PHP_VERSION_ID < 80000) {
+            curl_close($handle);
+        }
 
         if ($response === false) {
             throw new RuntimeException("Docker is not reachable at [{$this->host}]: {$error}");
