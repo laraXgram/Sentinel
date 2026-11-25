@@ -2,6 +2,7 @@ import { html, raw, esc } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import * as fmt from '../core/format.js';
 import { avatar } from './ui.js';
+import * as richText from './richText.js';
 
 export const UPDATE_TYPES = {
     message: { label: 'Message', icon: 'message' },
@@ -65,43 +66,53 @@ export function statusBadge(status) {
  * Telegram message formatting
  * ------------------------------------------------------------------ */
 
-const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'code', 'pre', 'blockquote', 'tg-spoiler'];
+const TEXT_MODE_KEY = 'sentinel.chatTextMode';
 
 /**
- * Render Telegram formatted text safely: everything is escaped, then the
- * handful of tags Telegram supports are allowed back in.
+ * How message text is shown in chat previews: "formatted" (default) or "raw".
  */
-export function formatText(text, parseMode) {
-    let out = esc(text ?? '');
-    const mode = String(parseMode || '').toLowerCase();
+export function textMode() {
+    try {
+        return localStorage.getItem(TEXT_MODE_KEY) === 'raw' ? 'raw' : 'formatted';
+    } catch (e) {
+        return 'formatted';
+    }
+}
 
-    if (mode === 'html') {
-        ALLOWED_TAGS.forEach((tag) => {
-            out = out.replace(new RegExp(`&lt;(/?)${tag}(?:\\s[^&]*?)?&gt;`, 'gi'), (match, slash) => {
-                if (tag === 'tg-spoiler') return slash ? '</span>' : '<span class="tg-spoiler">';
+/**
+ * Switch every chat preview on the page to the given text mode and remember it.
+ */
+export function setTextMode(mode) {
+    const value = mode === 'raw' ? 'raw' : 'formatted';
 
-                return `<${slash}${tag}>`;
-            });
-        });
-
-        out = out
-            .replace(/&lt;span class=&quot;tg-spoiler&quot;&gt;/gi, '<span class="tg-spoiler">')
-            .replace(/&lt;\/span&gt;/gi, '</span>')
-            .replace(/&lt;a href=&quot;(https?:\/\/[^&]+?|tg:\/\/[^&]+?)&quot;&gt;(.*?)&lt;\/a&gt;/gi, '<a class="tg-link" href="$1" target="_blank" rel="noopener noreferrer">$2</a>');
-    } else if (mode === 'markdown' || mode === 'markdownv2') {
-        out = out
-            .replace(/```([\s\S]+?)```/g, '<pre>$1</pre>')
-            .replace(/`([^`]+?)`/g, '<code>$1</code>')
-            .replace(/\*([^*]+?)\*/g, '<b>$1</b>')
-            .replace(/__([^_]+?)__/g, '<u>$1</u>')
-            .replace(/_([^_]+?)_/g, '<i>$1</i>')
-            .replace(/~([^~]+?)~/g, '<s>$1</s>')
-            .replace(/\|\|(.+?)\|\|/g, '<span class="tg-spoiler">$1</span>')
-            .replace(/\[([^\]]+?)\]\((https?:\/\/[^)]+?)\)/g, '<a class="tg-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/\\([_*[\]()~`>#+\-=|{}.!])/g, '$1');
+    try {
+        localStorage.setItem(TEXT_MODE_KEY, value);
+    } catch (e) {
+        //
     }
 
-    return raw(`<span class="bubble-text">${out}</span>`);
+    document.querySelectorAll('.chat-preview').forEach((preview) => {
+        preview.dataset.textMode = value;
+        preview.querySelectorAll('[data-chat-text-mode]').forEach((button) => {
+            button.classList.toggle('active', button.dataset.chatTextMode === value);
+        });
+    });
+}
+
+/**
+ * Render Telegram text both formatted (HTML, MarkdownV2, Markdown or
+ * entities, as the Telegram apps show it) and raw (exactly as sent); the
+ * preview's text mode decides which one is visible.
+ */
+export function formatText(text, parseMode = null, entities = null) {
+    const source = String(text ?? '');
+    const parsed = richText.parse(source, parseMode, entities);
+    const mode = String(parseMode || '').trim();
+
+    return raw(
+        `<span class="bubble-text tg-formatted">${richText.render(parsed.text, parsed.entities)}</span>`
+        + `<span class="bubble-text tg-raw">${mode ? `<span class="tg-raw-mode">${esc(mode)}</span>` : ''}${esc(source)}</span>`,
+    );
 }
 
 function decode(value) {
@@ -126,7 +137,7 @@ export function keyboard(markup) {
             <div class="inline-keyboard">
                 ${data.inline_keyboard.map((row) => html`
                     <div class="inline-row">
-                        ${row.map((button) => html`<span class="inline-btn" title="${button.callback_data ? `callback_data: ${button.callback_data}` : button.url || ''}">${button.text}${button.url ? icon('external') : button.web_app ? icon('globe') : button.switch_inline_query !== undefined ? icon('at') : ''}</span>`)}
+                        ${row.map((button) => html`<span class="${buttonClass(button)}" title="${button.callback_data ? `callback_data: ${button.callback_data}` : button.url || ''}">${buttonIcon(button)}${button.text}${button.url ? icon('external') : button.web_app ? icon('globe') : button.switch_inline_query !== undefined ? icon('at') : ''}</span>`)}
                     </div>`)}
             </div>`;
     }
@@ -134,7 +145,7 @@ export function keyboard(markup) {
     if (Array.isArray(data.keyboard)) {
         return html`
             <div class="reply-keyboard">
-                ${data.keyboard.map((row) => html`<div class="inline-row">${row.map((button) => html`<span class="inline-btn">${typeof button === 'string' ? button : button.text}</span>`)}</div>`)}
+                ${data.keyboard.map((row) => html`<div class="inline-row">${row.map((button) => typeof button === 'string' ? html`<span class="inline-btn">${button}</span>` : html`<span class="${buttonClass(button)}">${buttonIcon(button)}${button.text}</span>`)}</div>`)}
             </div>`;
     }
 
@@ -143,6 +154,21 @@ export function keyboard(markup) {
     }
 
     return '';
+}
+
+const BUTTON_STYLES = ['danger', 'success', 'primary'];
+
+function buttonClass(button) {
+    const style = BUTTON_STYLES.includes(button?.style) ? ` btn-${button.style}` : '';
+
+    return `inline-btn${style}${button?.icon_custom_emoji_id ? ' has-premium-icon' : ''}`;
+}
+
+/**
+ * The custom emoji a button shows before its text, with the premium effect.
+ */
+function buttonIcon(button) {
+    return button?.icon_custom_emoji_id ? raw(richText.premiumEmoji(button.icon_custom_emoji_id, '✨')) : '';
 }
 
 const MEDIA = {
@@ -172,6 +198,7 @@ function incoming(update, summary) {
     if (['message', 'edited_message', 'channel_post', 'business_message', 'edited_channel_post', 'edited_business_message'].includes(type)) {
         const kind = Object.keys(MEDIA).find((key) => payload[key] !== undefined);
         const text = payload.text ?? payload.caption ?? '';
+        const entities = payload.text !== undefined ? payload.entities : payload.caption_entities;
 
         if (!kind && !text) {
             const service = payload.new_chat_members ? `${payload.new_chat_members.map(personName).join(', ')} joined`
@@ -192,13 +219,13 @@ function incoming(update, summary) {
 
         return html`
             <div class="msg out">
-                <div class="bubble">${kind ? mediaBox(kind, detail) : ''}${text ? formatText(text, null) : ''}<span class="meta">${type.startsWith('edited') ? 'edited ' : ''}${time(payload.date)} ✓✓</span></div>
+                <div class="bubble">${kind ? mediaBox(kind, detail) : ''}${text ? formatText(text, null, entities) : ''}<span class="meta">${type.startsWith('edited') ? 'edited ' : ''}${time(payload.date)} ✓✓</span></div>
             </div>`;
     }
 
     if (type === 'callback_query') {
         return html`
-            ${payload.message?.text ? html`<div class="msg in"><div class="bubble">${formatText(payload.message.text)}<span class="meta">${time(payload.message.date)}</span></div>${keyboard(payload.message.reply_markup)}</div>` : ''}
+            ${payload.message?.text ? html`<div class="msg in"><div class="bubble">${formatText(payload.message.text, null, payload.message.entities)}<span class="meta">${time(payload.message.date)}</span></div>${keyboard(payload.message.reply_markup)}</div>` : ''}
             <div class="service-msg">👆 ${personName(payload.from)} tapped <b>${payload.data ?? payload.game_short_name ?? 'a button'}</b></div>`;
     }
 
@@ -278,7 +305,7 @@ function outgoing(entry) {
             ${label}
             <div class="bubble">
                 ${photo || (mediaKind ? mediaBox(mediaKind, detail) : '')}
-                ${text ? formatText(text, p.parse_mode) : ''}
+                ${text ? formatText(text, p.parse_mode, p.text !== undefined ? p.entities : p.caption_entities) : ''}
                 ${!text && !mediaKind && edited ? html`<span class="bubble-note">reply markup updated</span>` : ''}
                 <span class="meta">${edited ? 'edited · ' : ''}${meta}</span>
             </div>
@@ -294,12 +321,19 @@ export function chatPreview({ update, summary, calls = [], bot = null }) {
     const chat = summary?.chat || summary?.user;
     const title = chat ? personName(chat) : 'Chat';
 
+    const mode = textMode();
+
     return html`
+        <div class="chat-preview" data-text-mode="${mode}">
         <div class="chat-head">
             ${avatar(title, chat?.id)}
             <div class="identity-text grow">
                 <span class="identity-name">${title}</span>
                 <span class="identity-sub">${chat?.type ? fmt.title(chat.type) : ''}${bot ? ` · with @${bot}` : ''}</span>
+            </div>
+            <div class="segmented sm" role="group" aria-label="Message text">
+                <button type="button" class="${mode === 'formatted' ? 'active' : ''}" data-chat-text-mode="formatted" title="Show the text the way Telegram formats it">Formatted</button>
+                <button type="button" class="${mode === 'raw' ? 'active' : ''}" data-chat-text-mode="raw" title="Show the text exactly as it was sent">Raw</button>
             </div>
             <span class="badge brand">${icon('eye')} Preview</span>
         </div>
@@ -308,5 +342,6 @@ export function chatPreview({ update, summary, calls = [], bot = null }) {
             ${update ? incoming(update, summary) : ''}
             ${calls.map(outgoing)}
             ${calls.length === 0 ? html`<div class="service-msg">the bot did not call the Telegram API</div>` : ''}
+        </div>
         </div>`;
 }

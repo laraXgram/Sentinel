@@ -5,6 +5,7 @@ import { store, setTheme } from './core/store.js';
 import { Router, navigate } from './core/router.js';
 import * as fmt from './core/format.js';
 import { toast, avatar } from './components/ui.js';
+import { setTextMode } from './components/telegram.js';
 
 import OverviewPage from './pages/overview.js';
 import { BotsPage, BotPage } from './pages/bots.js';
@@ -305,6 +306,10 @@ class App {
                 this.renderHeader();
             }
         });
+
+        // Chat previews: switch between formatted and raw text, and open expandable quotes.
+        on(document, 'click', '[data-chat-text-mode]', (e, button) => setTextMode(button.dataset.chatTextMode));
+        on(document, 'click', '.tg-formatted .tg-quote.expandable', (e, quote) => quote.classList.toggle('open'));
 
         on(document, 'submit', 'form[data-action=search]', (e, form) => {
             e.preventDefault();

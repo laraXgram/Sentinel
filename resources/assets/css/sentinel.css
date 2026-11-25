@@ -2625,6 +2625,138 @@ a.timeline-item:hover .timeline-title {
     text-align: right;
 }
 
+/* Formatted / raw message text */
+
+.chat-preview .tg-raw,
+.chat-preview[data-text-mode="raw"] .tg-formatted {
+    display: none;
+}
+
+.chat-preview[data-text-mode="raw"] .tg-raw {
+    display: inline;
+    font-family: var(--mono);
+    font-size: 12.5px;
+}
+
+.tg-raw-mode {
+    display: inline-block;
+    margin: 0 6px 2px 0;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.08);
+    font-size: 10.5px;
+    font-weight: 600;
+    vertical-align: 1px;
+}
+
+.dark .tg-raw-mode {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.bubble .tg-quote {
+    position: relative;
+    display: block;
+    margin: 3px 0;
+    padding: 3px 8px 3px 10px;
+    border-left: 3px solid var(--tg-link);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--tg-link) 9%, transparent);
+}
+
+.bubble .tg-quote.expandable {
+    max-height: 4.3em;
+    overflow: hidden;
+    padding-right: 22px;
+    cursor: pointer;
+}
+
+.bubble .tg-quote.expandable::after {
+    content: "⌄";
+    position: absolute;
+    right: 6px;
+    bottom: 2px;
+    color: var(--tg-link);
+    font-weight: 700;
+}
+
+.bubble .tg-quote.expandable.open {
+    max-height: none;
+}
+
+.bubble .tg-quote.expandable.open::after {
+    content: "⌃";
+}
+
+.bubble pre[data-language]::before {
+    content: attr(data-language);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--tg-link);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.bubble .tg-time {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+/* Button styles (Bot API "danger", "success" and "primary") */
+
+.inline-btn.btn-danger { background: rgba(229, 57, 53, 0.85); color: #fff; }
+.inline-btn.btn-success { background: rgba(67, 160, 71, 0.85); color: #fff; }
+.inline-btn.btn-primary { background: rgba(33, 150, 243, 0.85); color: #fff; }
+
+/* Premium (custom) emoji */
+
+.tg-premium-emoji {
+    position: relative;
+    display: inline-block;
+    animation: premium-float 2.4s ease-in-out infinite, premium-glow 2.4s ease-in-out infinite;
+    cursor: help;
+}
+
+.tg-premium-emoji::after {
+    content: "✦";
+    position: absolute;
+    top: -0.45em;
+    right: -0.45em;
+    font-size: 0.5em;
+    color: #b57bff;
+    animation: premium-twinkle 1.6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.inline-btn.has-premium-icon {
+    background-image: linear-gradient(110deg, transparent 30%, rgba(181, 123, 255, 0.28) 50%, transparent 70%);
+    background-size: 250% 100%;
+    animation: premium-shimmer 3s linear infinite;
+}
+
+.inline-btn .tg-premium-emoji {
+    margin-right: 2px;
+}
+
+@keyframes premium-float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-1.5px) scale(1.08); }
+}
+
+@keyframes premium-glow {
+    0%, 100% { filter: drop-shadow(0 0 0 rgba(181, 123, 255, 0)); }
+    50% { filter: drop-shadow(0 0 4px rgba(181, 123, 255, 0.95)) drop-shadow(0 0 7px rgba(255, 196, 0, 0.55)); }
+}
+
+@keyframes premium-twinkle {
+    0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+    50% { opacity: 1; transform: scale(1) rotate(90deg); }
+}
+
+@keyframes premium-shimmer {
+    from { background-position: 125% 0; }
+    to { background-position: -125% 0; }
+}
+
 /* ------------------------------------------------------------------
  * Feedback: empty, skeleton, toast, modal
  * ------------------------------------------------------------------ */
